@@ -138,8 +138,18 @@ class Nodes(object):
         """Updates nodes from event stream message."""
         nid = xmldoc.getElementsByTagName('node')[0].firstChild.toxml()
         nval = int(xmldoc.getElementsByTagName('action')[0].firstChild.toxml())
-        self.getByID(nid).status.update(nval, force=True, silent=True)
-        self.parent.log.info('ISY Updated Node: ' + nid)
+        ctrl = xmldoc.getElementsByTagName('control')[0].firstChild.toxml()
+        try:
+            if ctrl == 'ST':
+                self.getByID(nid).status.update(nval, force=True, silent=True)
+                self.parent.log.info('ISY Updated Node: ' + nid)
+            else:
+                nid = '{}_{}'.format(nid, ctrl)
+                status = self.getByID(nid).status
+                status.update(nval, force=True, silent=True)
+                self.parent.log.info('ISY Updated Property: ' + nid)
+        except ValueError:
+            self.parent.log.warning('Unable to find node:: ' + nid)
 
     def _controlmsg(self, xmldoc):
         """Passes Control events from an event stream message to nodes, for
@@ -203,8 +213,12 @@ class Nodes(object):
                     if ntype == 'folder':
                         self.insert(nid, nname, nparent, None, ntype)
                     elif ntype == 'node':
+                        node_xml = self.parent.conn.getNode(nid)
+                        node_doc = minidom.parseString(node_xml) # type: xml.dom.minidom.Document
+                        node = node_doc.getElementsByTagName('node')[0]
+
                         (state_val, state_uom, state_prec,
-                         aux_props) = parse_xml_properties(feature)
+                         aux_props) = parse_xml_properties(node_doc)
 
                         dimmable = '%' in state_uom
 
@@ -217,6 +231,21 @@ class Nodes(object):
                                          parent_nid=parent_nid,
                                          type=type),
                                     ntype)
+
+                        for id, prop in aux_props.items():
+                            if id == 'ST':
+                                continue
+
+                            prop_id = '{}_{}'.format(nid, id)
+                            prop_name = '{} {}'.format(nname, id)
+
+                            self.insert(prop_id, prop_name, nparent,
+                                        Node(self, prop_id, prop['value'],
+                                             prop_name, False,
+                                             uom=prop['uom'],
+                                             prec=prop['prec']),
+                                        'property')
+
                     elif ntype == 'group':
                         flag = feature.attributes['flag'].value
                         # Ignore groups that contain 0x08 in the flag since that is a ISY scene that
@@ -268,16 +297,23 @@ class Nodes(object):
                         node.prec = state_prec
                         node.dimmable = dimmable
 
-                        node.aux_properties = {}
-                        for prop in aux_props:
-                            node.aux_properties[prop.get(ATTR_ID)] = prop
-
                         node.status.update(state_val, silent=True)
+
+                        if len(node.aux_properties) > 0:
+                            node_xml = self.parent.conn.getNode(nid)
+                            node_doc = minidom.parseString(node_xml)
+                            (state_val, state_uom, state_prec,
+                             aux_props) = parse_xml_properties(node_doc)
+
+                            for key in aux_props.keys():
+                                pid = '{}_{}'.format(nid, key)
+                                prop = self.getByID(pid)
+                                prop.status.update(prop['value'], )
                     else:
                         node = Node(self, id, state_val, ' ', dimmable,
                                     uom=state_uom, prec=state_prec,
                                     aux_properties=aux_props)
-                        self.insert(id, ' ', None, node)
+                        self.insert(id, ' ', None, node, 'node')
 
                 self.parent.log.info('ISY Updated Nodes')
 
@@ -356,7 +392,7 @@ class Nodes(object):
 
         |  i: Integer representing index of node/group/folder.
         """
-        if self.ntypes[i] in ['group', 'node']:
+        if self.ntypes[i] in ['group', 'node', 'property']:
             return self.nobjs[i]
         return Nodes(self.parent, self.nids[i], self.nids, self.nnames,
                      self.nparents, self.nobjs, self.ntypes)
@@ -406,7 +442,7 @@ class Nodes(object):
         myname = self.name + '/'
 
         for dtype, name, ident in self.children:
-            if dtype in ['group', 'node']:
+            if dtype in ['group', 'node', 'property']:
                 output.append((dtype, myname + name, ident))
 
             else:

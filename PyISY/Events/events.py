@@ -8,6 +8,7 @@ from xml.dom import minidom
 from . import strings
 
 POLL_TIME = 5
+STATE_CNTRLS = ['ST', 'LUMIN', 'CLITEMP', 'CLIHUM', 'UV', 'BATLVL', 'TPW', 'CC', 'CV']
 
 class EventStream(socket.socket):
 
@@ -72,7 +73,7 @@ class EventStream(socket.socket):
                 self._hbwait = int(xmldoc.getElementsByTagName('action')[0].
                                    firstChild.toxml())
                 self.parent.log.debug('ISY HEARTBEAT: ' + self._lasthb.isoformat())
-            if cntrl == 'ST':  # NODE UPDATE
+            if cntrl in STATE_CNTRLS:  # NODE UPDATE
                 self.parent.nodes._upmsg(xmldoc)
             if  cntrl[0] != '_': # NODE CONTROL EVENT
                 self.parent.nodes._controlmsg(xmldoc)

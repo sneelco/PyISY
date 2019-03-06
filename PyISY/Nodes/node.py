@@ -47,7 +47,7 @@ def parse_xml_properties(xmldoc):
     state_val = None
     state_uom = []
     state_prec = ''
-    aux_props = []
+    aux_props = {}
     state_set = False
 
     props = xmldoc.getElementsByTagName('property')
@@ -69,28 +69,26 @@ def parse_xml_properties(xmldoc):
             #print "prop=",prop.toprettyxml();
             units = uom if uom == 'n/a' else uom.split('/')
 
-            val = val.strip()
-            if val == "":
-                val = -1 * float('inf')
-            else:
-                val = int(val)
+            nval = 0
+            if val.strip() != "":
+                nval = int(val.replace(' ', '0'))
 
             if prop_id == STATE_PROPERTY:
-                state_val = val
+                state_val = nval
                 state_uom = units
                 state_prec = prec
                 state_set = True
             elif prop_id == BATLVL_PROPERTY and not state_set:
-                state_val = val
+                state_val = nval
                 state_uom = units
                 state_prec = prec
-            else:
-                aux_props.append({
+            elif val.strip() != "":
+                aux_props[prop_id] = {
                     ATTR_ID: prop_id,
-                    ATTR_VALUE: val,
+                    ATTR_VALUE: nval,
                     ATTR_PREC: prec,
                     ATTR_UOM: units
-                })
+                }
 
     return state_val, state_uom, state_prec, aux_props
 
